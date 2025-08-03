@@ -1,85 +1,104 @@
-import io
-import os
-import argparse
-# runpod utils
-import runpod
-from runpod.serverless.utils.rp_validator import validate
-from runpod.serverless.utils.rp_upload import upload_in_memory_object
-from runpod.serverless.utils import rp_download, rp_cleanup
-# predictor
-import predict
-from rp_schema import INPUT_SCHEMA
-# utils
-from scipy.io.wavfile import write
+import sys
+import traceback
+print("=== Starting rp_handler.py ===", file=sys.stderr)
+try:
+    import io
+    import os
+    import argparse
+    import runpod
+    from runpod.serverless.utils.rp_validator import validate
+    from runpod.serverless.utils.rp_upload import upload_in_memory_object
+    from runpod.serverless.utils import rp_download, rp_cleanup
+    import predict
+    from rp_schema import INPUT_SCHEMA
+    from scipy.io.wavfile import write
+    print("=== Imports successful ===", file=sys.stderr)
+except Exception:
+    print("=== Import error ===", file=sys.stderr)
+    traceback.print_exc(file=sys.stderr)
+    sys.exit(1)
 
 
 # Model params
-model_dir = os.getenv("WORKER_MODEL_DIR", "/model")
+MODEL_DIR = os.getenv("WORKER_MODEL_DIR", "/model")
 
 
 def upload_audio(wav, sample_rate, key):
-    """ Uploads audio to S3 bucket if it is available, otherwise returns base64 encoded audio. """
-    # Convert wav to bytes
+    """Uploads audio to S3 bucket if configured, otherwise returns base64."""
     wav_io = io.BytesIO()
     write(wav_io, sample_rate, wav)
 
-    # Upload to S3
-    if os.environ.get('BUCKET_ENDPOINT_URL', False):
+    # Upload to S3 if endpoint set
+    if os.environ.get('BUCKET_ENDPOINT_URL'):
+        print(f"=== Uploading {key} to S3 ===", file=sys.stderr)
         return upload_in_memory_object(
             key,
-            wav_io.read(),
-            bucket_creds = {
-                "endpointUrl": os.environ.get('BUCKET_ENDPOINT_URL', None),
-                "accessId": os.environ.get('BUCKET_ACCESS_KEY_ID', None),
-                "accessSecret": os.environ.get('BUCKET_SECRET_ACCESS_KEY', None)
+            wav_io.getvalue(),
+            bucket_creds={
+                "endpointUrl": os.environ.get('BUCKET_ENDPOINT_URL'),
+                "accessId": os.environ.get('BUCKET_ACCESS_KEY_ID'),
+                "accessSecret": os.environ.get('BUCKET_SECRET_ACCESS_KEY'),
             }
         )
-    # Base64 encode
-    return wav_io.decode('UTF-8')
+    print("=== Returning base64 audio ===", file=sys.stderr)
+    return wav_io.getvalue().decode('UTF-8')
 
 
 def run(job):
-    job_input = job['input']
+    print(f"=== run() invoked for job {job.get('id')} ===", file=sys.stderr)
+    try:
+        job_input = job.get('input', {})
+        validated = validate(job_input, INPUT_SCHEMA)
+        if 'errors' in validated:
+            print(f"=== Validation errors: {validated['errors']} ===", file=sys.stderr)
+            return {"error": validated['errors']}
+        data = validated['validated_input']
 
-    # Input validation
-    validated_input = validate(job_input, INPUT_SCHEMA)
+        # Download reference voice files
+        for k, v in data.get("voice", {}).items():
+            print(f"=== Downloading voice[{k}] from {v} ===", file=sys.stderr)
+            files = rp_download.download_files_from_urls(job['id'], [v])
+            data["voice"][k] = files[0]
 
-    if 'errors' in validated_input:
-        return {"error": validated_input['errors']}
-    validated_input = validated_input['validated_input']
-
-    # Download input objects
-    for k, v in validated_input["voice"].items():
-        validated_input["voice"][k] = rp_download.download_files_from_urls(
-            job['id'],
-            [v]
+        print("=== Running model inference ===", file=sys.stderr)
+        wave, sr = MODEL.predict(
+            language=data["language"],
+            speaker_wav=data["voice"],
+            text=data["text"],
+            gpt_cond_len=data.get("gpt_cond_len", 7),
+            max_ref_len=data.get("max_ref_len", 10),
+            speed=data.get("speed", 1.0),
+            enhance_audio=data.get("enhance_audio", True)
         )
+        print("=== Inference complete ===", file=sys.stderr)
 
-    # Inference text-to-audio
-    wave, sr = MODEL.predict(
-        language=validated_input["language"],
-        speaker_wav=validated_input["voice"],
-        text=validated_input["text"],
-        gpt_cond_len=validated_input.get("gpt_cond_len", 7),
-        max_ref_len=validated_input.get("max_ref_len", 10),
-        speed=validated_input.get("speed", 1.0),
-        enhance_audio=validated_input.get("enhance_audio", True)
-    )
+        print("=== Uploading audio ===", file=sys.stderr)
+        audio_url = upload_audio(wave, sr, f"{job['id']}.wav")
+        rp_cleanup.clean(['input_objects'])
+        print("=== run() completed successfully ===", file=sys.stderr)
+        return {"audio": audio_url}
 
-    # Upload output object
-    audio_return = upload_audio(wave, sr, f"{job['id']}.wav")
-    job_output = {
-        "audio": audio_return
-    }
-
-    # Remove downloaded input objects
-    rp_cleanup.clean(['input_objects'])
-
-    return job_output
+    except Exception:
+        print("=== run() error ===", file=sys.stderr)
+        traceback.print_exc(file=sys.stderr)
+        return {"error": "Internal server error"}
 
 
 if __name__ == "__main__":
-    MODEL = predict.Predictor(model_dir=model_dir)
-    MODEL.setup()
+    try:
+        print("=== Initializing Predictor ===", file=sys.stderr)
+        MODEL = predict.Predictor(model_dir=MODEL_DIR)
+        MODEL.setup()
+        print("=== Predictor setup complete ===", file=sys.stderr)
+    except Exception:
+        print("=== Predictor initialization error ===", file=sys.stderr)
+        traceback.print_exc(file=sys.stderr)
+        sys.exit(1)
 
-    runpod.serverless.start({"handler": run})
+    try:
+        print("=== Starting runpod serverless ===", file=sys.stderr)
+        runpod.serverless.start({"handler": run})
+    except Exception:
+        print("=== runpod.serverless.start error ===", file=sys.stderr)
+        traceback.print_exc(file=sys.stderr)
+        sys.exit(1)
