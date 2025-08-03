@@ -1,6 +1,7 @@
 import sys
 import traceback
 print("=== Starting rp_handler.py ===", file=sys.stderr)
+
 try:
     import io
     import os
