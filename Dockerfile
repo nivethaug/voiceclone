@@ -1,57 +1,53 @@
-FROM nvidia/cuda:11.8.0-devel-ubuntu22.04
+FROM nvidia/cuda:12.1.0-cudnn8-runtime-ubuntu22.04
 
-# Basic environment variables
-ENV LANG=C.UTF-8 \
-    LC_ALL=C.UTF-8 \
-    DEBIAN_FRONTEND=noninteractive \
-    SHELL=/bin/bash \
-    HOME=/home/user \
+# Set environment variables
+ENV DEBIAN_FRONTEND=noninteractive \
+    PYTHONUNBUFFERED=1 \
+    TZ=Etc/UTC \
     WORKER_DIR=/app \
-    WORKER_MODEL_DIR=/app/model \
-    WORKER_USE_CUDA=True \
-    LD_LIBRARY_PATH=$LD_LIBRARY_PATH:/usr/lib/x86_64-linux-gnu \
-    RUNPOD_DEBUG_LEVEL=INFO
+    PATH="$PATH:/root/.local/bin"
 
-SHELL ["/bin/bash", "-c"]
+# System dependencies
+RUN apt-get update && \
+    apt-get install -y \
+    git \
+    git-lfs \
+    curl \
+    wget \
+    ffmpeg \
+    build-essential \
+    python3.10 \
+    python3-pip \
+    python3.10-venv \
+    libsndfile1-dev \
+    libgl1 \
+    && apt-get clean
 
-# Create app directory
-RUN mkdir -p ${WORKER_DIR}
+# Make python3.10 default
+RUN update-alternatives --install /usr/bin/python python /usr/bin/python3.10 1
+RUN update-alternatives --install /usr/bin/python3 python3 /usr/bin/python3.10 1
+
+# Upgrade pip
+RUN python3 -m pip install --upgrade pip setuptools wheel
+
+# Create working directory
 WORKDIR ${WORKER_DIR}
 
-# Install base packages
-RUN apt-get update && apt-get install -y \
-    wget bzip2 ca-certificates curl git sudo gcc build-essential \
-    openssh-client cmake g++ ninja-build libaio-dev \
-    python3-dev python3-pip \
-    && apt-get clean && rm -rf /var/lib/apt/lists/*
+# Copy code
+COPY . ${WORKER_DIR}
 
-# Create non-root user
-RUN useradd -m -s /bin/bash user && \
-    echo "user ALL=(ALL) NOPASSWD:ALL" > /etc/sudoers.d/90-user && \
-    chown -R user:user ${WORKER_DIR}
-USER user
-WORKDIR ${WORKER_DIR}
+# Install Python requirements
+RUN pip install --no-cache-dir -r ${WORKER_DIR}/requirements.txt
 
-# Install Python requirements (main + audio enhancer)
-COPY builder/requirements.txt .
-COPY builder/requirements_audio_enhancer.txt .
+# Optional: install Deepspeed if needed
+RUN pip install deepspeed==0.13.1 && \
+    python3 -c "import deepspeed; print('Deepspeed version:', deepspeed.__version__)"
 
-RUN pip install --upgrade pip && \
-    pip install --no-cache-dir -r requirements.txt && \
-    pip install --no-cache-dir -r requirements_audio_enhancer.txt && \
-    rm requirements.txt requirements_audio_enhancer.txt
+# Git LFS pull (if models are tracked this way)
+RUN git lfs install && git lfs pull || true
 
-# Confirm deepspeed version
-RUN python3 -c "import deepspeed; print('Deepspeed version:', deepspeed.__version__)"
+# Expose port (if using web server)
+EXPOSE 3000
 
-# Setup git-lfs and download models
-RUN curl -s https://packagecloud.io/install/repositories/github/git-lfs/script.deb.sh | sudo bash && \
-    sudo apt-get install -y git-lfs && \
-    git lfs install && \
-    git clone https://huggingface.co/coqui/XTTS-v2 ${WORKER_MODEL_DIR}/xttsv2 && \
-    git clone https://huggingface.co/ResembleAI/resemble-enhance ${WORKER_MODEL_DIR}/audio_enhancer
-
-# Add worker source
-COPY src ${WORKER_DIR}
-
-CMD ["python3", "-u", "/app/rp_handler.py", "--model-dir=/app/model"]
+# Run command (adjust for your app entrypoint)
+CMD ["python3", "main.py"]
