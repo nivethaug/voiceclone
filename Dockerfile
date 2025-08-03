@@ -1,24 +1,86 @@
-FROM runpod/pytorch:2.8.0-py3.11-cuda12.8.1-cudnn-devel-ubuntu22.04
+FROM nvidia/cuda:11.8.0-devel-ubuntu22.04
 
-ENV WORKER_DIR=/workspace \
-    MODE_TO_RUN=pod \
-    PYTHONUNBUFFERED=1
+# Build args
+ENV LANG=C.UTF-8 LC_ALL=C.UTF-8
+ENV WORKER_MODEL_DIR=/app/model
+ENV WORKER_USE_CUDA=True
 
-WORKDIR $WORKER_DIR
+SHELL ["/bin/bash", "-o", "pipefail", "-c"]
 
-# Install dependencies + TTS
-COPY builder/requirements.txt .
-RUN pip install --upgrade pip && pip install --no-cache-dir -r requirements.txt
+ENV WORKER_DIR=/app
+RUN mkdir ${WORKER_DIR}
+WORKDIR ${WORKER_DIR}
 
-RUN pip install deepspeed==0.13.1
-RUN python3 -c "import deepspeed; print('DS Version:', deepspeed.__version__)"
+SHELL ["/bin/bash", "-c"]
+ENV DEBIAN_FRONTEND=noninteractive
+ENV SHELL=/bin/bash
+ENV LD_LIBRARY_PATH=$LD_LIBRARY_PATH:/usr/lib/x86_64-linux-gnu
 
-# Copy workspace files
-COPY src ./src
-COPY start.sh .
+# Update package lists and install system dependencies
+RUN apt-get update --fix-missing && \
+    apt-get install -y wget bzip2 ca-certificates curl git sudo gcc build-essential openssh-client cmake g++ ninja-build && \
+    apt-get install -y libaio-dev && \
+    DEBIAN_FRONTEND=noninteractive apt-get install -y python3-dev python3-pip && \
+    apt-get clean && \
+    rm -rf /var/lib/apt/lists/*
 
-RUN chmod +x start.sh
+# Upgrade pip, setuptools, and wheel first
+RUN python3 -m pip install --upgrade pip setuptools wheel
 
-EXPOSE 8000
+# Install PyTorch with CUDA 11.8 support BEFORE other dependencies
+RUN pip install torch==2.0.1 torchvision==0.15.2 torchaudio==2.0.2 --index-url https://download.pytorch.org/whl/cu118
 
-CMD ["bash", "./start.sh"]
+# Install DeepSpeed separately after PyTorch
+RUN pip install --no-cache-dir deepspeed==0.9.5
+
+# Verify DeepSpeed installation works
+RUN python3 -c "import torch; print(f'PyTorch version: {torch.__version__}')"
+RUN python3 -c "import torch; print(f'CUDA available: {torch.cuda.is_available()}')"
+RUN python3 -c "import deepspeed; print(f'DeepSpeed version: {deepspeed.__version__}')"
+
+# Create a non-root user and switch to it
+RUN adduser --disabled-password --gecos '' --shell /bin/bash user \
+                && chown -R user:user ${WORKER_DIR}
+RUN echo "user ALL=(ALL) NOPASSWD:ALL" > /etc/sudoers.d/90-user
+USER user
+
+# All users can use /home/user as their home directory
+ENV HOME=/home/user
+ENV SHELL=/bin/bash
+
+# Install remaining Python dependencies (Worker Template)
+COPY builder/requirements.txt ${WORKER_DIR}/requirements.txt
+RUN pip install --no-cache-dir -r ${WORKER_DIR}/requirements.txt && \
+    rm ${WORKER_DIR}/requirements.txt
+
+# Install audio enhancer requirements
+COPY builder/requirements_audio_enhancer.txt ${WORKER_DIR}/requirements_audio_enhancer.txt
+RUN pip install --no-cache-dir -r ${WORKER_DIR}/requirements_audio_enhancer.txt && \
+    rm ${WORKER_DIR}/requirements_audio_enhancer.txt
+
+# Switch back to root for system operations
+USER root
+
+# Fetch the model - install git-lfs
+RUN curl -s https://packagecloud.io/install/repositories/github/git-lfs/script.deb.sh | bash
+RUN apt-get install -y git-lfs
+RUN git lfs install
+
+# Switch back to user for model downloads
+USER user
+
+# Fetch XTTSv2 model
+RUN git clone https://huggingface.co/coqui/XTTS-v2 ${WORKER_MODEL_DIR}/xttsv2
+RUN git clone https://huggingface.co/ResembleAI/resemble-enhance ${WORKER_MODEL_DIR}/audio_enhancer
+
+# Add src files (Worker Template)
+ADD src ${WORKER_DIR}
+
+# Ensure proper ownership
+USER root
+RUN chown -R user:user ${WORKER_DIR} ${WORKER_MODEL_DIR}
+USER user
+
+ENV RUNPOD_DEBUG_LEVEL=INFO
+
+CMD python3 -u ${WORKER_DIR}/rp_handler.py --model-dir="${WORKER_MODEL_DIR}"
