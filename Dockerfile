@@ -19,25 +19,19 @@ RUN apt-get update --fix-missing && \
     apt-get clean && rm -rf /var/lib/apt/lists/* && \
     git lfs install
 
+# Ensure model directory and permissions
+RUN mkdir -p /app/model && chown -R worker:worker /app /app/model
+
 # Upgrade pip and build tools
 RUN python3 -m pip install --upgrade pip setuptools wheel
 
 # Install PyTorch (CUDA11.8)
-RUN pip install \
-      torch==2.0.1 torchvision==0.15.2 torchaudio==2.0.2 \
-      --index-url https://download.pytorch.org/whl/cu118
+RUN pip install torch==2.0.1 torchvision==0.15.2 torchaudio==2.0.2 \
+    --index-url https://download.pytorch.org/whl/cu118
 
-# Install DeepSpeed and pin numpy <2.0
-RUN pip install --no-cache-dir deepspeed==0.9.5 && \
+# Install DeepSpeed (latest) and pin numpy <2.0
+RUN pip install --no-cache-dir deepspeed==0.12.6 && \
     pip install --no-cache-dir "numpy<2.0.0"
-
-# Verify installations
-RUN python3 - <<'EOF'
-import torch, numpy, deepspeed
-print("PyTorch:", torch.__version__, "CUDA:", torch.cuda.is_available())
-print("NumPy:", numpy.__version__)
-print("DeepSpeed:", deepspeed.__version__)
-EOF
 
 # Create non-root user via useradd (non-interactive)
 RUN useradd -m -s /bin/bash -u 1000 worker && \
@@ -45,6 +39,7 @@ RUN useradd -m -s /bin/bash -u 1000 worker && \
     chmod 0440 /etc/sudoers.d/worker
 
 USER worker
+RUN git lfs install --skip-repo
 ENV HOME=/home/worker \
     WORKER_DIR=/app
 
@@ -62,7 +57,7 @@ RUN git clone https://huggingface.co/coqui/XTTS-v2 ${WORKER_MODEL_DIR}/xttsv2
 RUN git clone https://huggingface.co/ResembleAI/resemble-enhance ${WORKER_MODEL_DIR}/audio_enhancer
 
 # Add source code
-ADD src ${WORKER_DIR}
+COPY src ${WORKER_DIR}
 
 ENV RUNPOD_DEBUG_LEVEL=INFO
 
