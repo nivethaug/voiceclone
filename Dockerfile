@@ -1,62 +1,57 @@
 FROM nvidia/cuda:11.8.0-devel-ubuntu22.04
 
-# Build args
-ENV LANG=C.UTF-8 LC_ALL=C.UTF-8
-ENV WORKER_MODEL_DIR=/app/model
-ENV WORKER_USE_CUDA=True
-
-SHELL ["/bin/bash", "-o", "pipefail", "-c"]
-
-ENV WORKER_DIR=/app
-RUN mkdir ${WORKER_DIR}
-WORKDIR ${WORKER_DIR}
+# Basic environment variables
+ENV LANG=C.UTF-8 \
+    LC_ALL=C.UTF-8 \
+    DEBIAN_FRONTEND=noninteractive \
+    SHELL=/bin/bash \
+    HOME=/home/user \
+    WORKER_DIR=/app \
+    WORKER_MODEL_DIR=/app/model \
+    WORKER_USE_CUDA=True \
+    LD_LIBRARY_PATH=$LD_LIBRARY_PATH:/usr/lib/x86_64-linux-gnu \
+    RUNPOD_DEBUG_LEVEL=INFO
 
 SHELL ["/bin/bash", "-c"]
-ENV DEBIAN_FRONTEND=noninteractive
-ENV SHELL=/bin/bash
-ENV LD_LIBRARY_PATH=$LD_LIBRARY_PATH:/usr/lib/x86_64-linux-gnu
 
-# Install some basic utilities
-RUN apt-get update --fix-missing && \
-    apt-get install -y wget bzip2 ca-certificates curl git sudo gcc build-essential openssh-client cmake g++ ninja-build && \
-    apt-get install -y libaio-dev && \
-    DEBIAN_FRONTEND=noninteractive apt-get install -y python3-dev python3-pip && \
-    apt-get clean && \
-    rm -rf /var/lib/apt/lists/*
+# Create app directory
+RUN mkdir -p ${WORKER_DIR}
+WORKDIR ${WORKER_DIR}
 
-# Create a non-root user and switch to it
-RUN adduser --disabled-password --gecos '' --shell /bin/bash user \
-                && chown -R user:user ${WORKER_DIR}
-RUN echo "user ALL=(ALL) NOPASSWD:ALL" > /etc/sudoers.d/90-user
+# Install base packages
+RUN apt-get update && apt-get install -y \
+    wget bzip2 ca-certificates curl git sudo gcc build-essential \
+    openssh-client cmake g++ ninja-build libaio-dev \
+    python3-dev python3-pip \
+    && apt-get clean && rm -rf /var/lib/apt/lists/*
+
+# Create non-root user
+RUN useradd -m -s /bin/bash user && \
+    echo "user ALL=(ALL) NOPASSWD:ALL" > /etc/sudoers.d/90-user && \
+    chown -R user:user ${WORKER_DIR}
 USER user
+WORKDIR ${WORKER_DIR}
 
-# All users can use /home/user as their home directory
-ENV HOME=/home/user
-ENV SHELL=/bin/bash
+# Install Python requirements (main + audio enhancer)
+COPY builder/requirements.txt .
+COPY builder/requirements_audio_enhancer.txt .
 
-# Install Python dependencies (Worker Template)
-COPY builder/requirements.txt ${WORKER_DIR}/requirements.txt
-RUN pip install --no-cache-dir -r ${WORKER_DIR}/requirements.txt && \
-    rm ${WORKER_DIR}/requirements.txt
-RUN python3 -c "import deepspeed; print(deepspeed.__version__)"
+RUN pip install --upgrade pip && \
+    pip install --no-cache-dir -r requirements.txt && \
+    pip install --no-cache-dir -r requirements_audio_enhancer.txt && \
+    rm requirements.txt requirements_audio_enhancer.txt
 
-# Install Python dependencies (Worker Template)
-COPY builder/requirements_audio_enhancer.txt ${WORKER_DIR}/requirements_audio_enhancer.txt
-RUN pip install --no-cache-dir -r ${WORKER_DIR}/requirements_audio_enhancer.txt && \
-    rm ${WORKER_DIR}/requirements_audio_enhancer.txt
+# Confirm deepspeed version
+RUN python3 -c "import deepspeed; print('Deepspeed version:', deepspeed.__version__)"
 
-# Fetch the model
-RUN curl -s https://packagecloud.io/install/repositories/github/git-lfs/script.deb.sh | sudo bash
-RUN sudo apt-get install git-lfs
-RUN git lfs install
+# Setup git-lfs and download models
+RUN curl -s https://packagecloud.io/install/repositories/github/git-lfs/script.deb.sh | sudo bash && \
+    sudo apt-get install -y git-lfs && \
+    git lfs install && \
+    git clone https://huggingface.co/coqui/XTTS-v2 ${WORKER_MODEL_DIR}/xttsv2 && \
+    git clone https://huggingface.co/ResembleAI/resemble-enhance ${WORKER_MODEL_DIR}/audio_enhancer
 
-# Fetch XTTSv2 model
-RUN git clone https://huggingface.co/coqui/XTTS-v2 ${WORKER_MODEL_DIR}/xttsv2
-RUN git clone https://huggingface.co/ResembleAI/resemble-enhance ${WORKER_MODEL_DIR}/audio_enhancer
+# Add worker source
+COPY src ${WORKER_DIR}
 
-# Add src files (Worker Template)
-ADD src ${WORKER_DIR}
-
-ENV RUNPOD_DEBUG_LEVEL=INFO
-
-CMD python3 -u ${WORKER_DIR}/rp_handler.py --model-dir="${WORKER_MODEL_DIR}"
+CMD ["python3", "-u", "/app/rp_handler.py", "--model-dir=/app/model"]
