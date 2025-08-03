@@ -1,53 +1,24 @@
-FROM nvidia/cuda:12.1.0-cudnn8-runtime-ubuntu22.04
+FROM runpod/pytorch:2.8.0-py3.11-cuda12.8.1-cudnn-devel-ubuntu22.04
 
-# Set environment variables
-ENV DEBIAN_FRONTEND=noninteractive \
-    PYTHONUNBUFFERED=1 \
-    TZ=Etc/UTC \
-    WORKER_DIR=/app \
-    PATH="$PATH:/root/.local/bin"
+ENV WORKER_DIR=/workspace \
+    MODE_TO_RUN=pod \
+    PYTHONUNBUFFERED=1
 
-# System dependencies
-RUN apt-get update && \
-    apt-get install -y \
-    git \
-    git-lfs \
-    curl \
-    wget \
-    ffmpeg \
-    build-essential \
-    python3.10 \
-    python3-pip \
-    python3.10-venv \
-    libsndfile1-dev \
-    libgl1 \
-    && apt-get clean
+WORKDIR $WORKER_DIR
 
-# Make python3.10 default
-RUN update-alternatives --install /usr/bin/python python /usr/bin/python3.10 1
-RUN update-alternatives --install /usr/bin/python3 python3 /usr/bin/python3.10 1
+# Install dependencies + TTS
+COPY builder/requirements.txt .
+RUN pip install --upgrade pip && pip install --no-cache-dir -r requirements.txt
 
-# Upgrade pip
-RUN python3 -m pip install --upgrade pip setuptools wheel
+RUN pip install deepspeed==0.13.1
+RUN python3 -c "import deepspeed; print('DS Version:', deepspeed.__version__)"
 
-# Create working directory
-WORKDIR ${WORKER_DIR}
+# Copy workspace files
+COPY src ./src
+COPY start.sh .
 
-# Copy code
-COPY . ${WORKER_DIR}
+RUN chmod +x start.sh
 
-# Install Python requirements
-RUN pip install --no-cache-dir -r ${WORKER_DIR}/requirements.txt
+EXPOSE 8000
 
-# Optional: install Deepspeed if needed
-RUN pip install deepspeed==0.13.1 && \
-    python3 -c "import deepspeed; print('Deepspeed version:', deepspeed.__version__)"
-
-# Git LFS pull (if models are tracked this way)
-RUN git lfs install && git lfs pull || true
-
-# Expose port (if using web server)
-EXPOSE 3000
-
-# Run command (adjust for your app entrypoint)
-CMD ["python3", "main.py"]
+CMD ["bash", "./start.sh"]
