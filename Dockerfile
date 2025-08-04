@@ -1,64 +1,26 @@
-FROM nvidia/cuda:11.8.0-devel-ubuntu22.04
+FROM python:3.10-slim
 
-ENV LANG=C.UTF-8 \
-    LC_ALL=C.UTF-8 \
-    WORKER_MODEL_DIR=/app/model \
-    WORKER_USE_CUDA=True \
-    DEBIAN_FRONTEND=noninteractive \
-    SHELL=/bin/bash \
-    LD_LIBRARY_PATH=$LD_LIBRARY_PATH:/usr/lib/x86_64-linux-gnu
-
-SHELL ["/bin/bash","-o","pipefail","-c"]
+WORKDIR /app
 
 # Install system dependencies
-RUN apt-get update --fix-missing && \
-    apt-get install -y wget bzip2 ca-certificates curl git sudo \
-                       gcc build-essential cmake g++ ninja-build libaio-dev \
-                       python3-dev python3-pip git-lfs && \
-    apt-get clean && rm -rf /var/lib/apt/lists/* && \
-    git lfs install
+RUN apt-get update && apt-get install -y \
+    gcc \
+    g++ \
+    libsndfile1 \
+    ffmpeg \
+    wget \
+    && rm -rf /var/lib/apt/lists/*
 
-# Create non-root worker user before setting folder ownership
-RUN useradd -m -s /bin/bash -u 1000 worker && \
-    echo "worker ALL=(ALL) NOPASSWD:ALL" > /etc/sudoers.d/worker && \
-    chmod 0440 /etc/sudoers.d/worker
+# Copy requirements and install Python dependencies
+COPY requirements.txt .
+RUN pip install --no-cache-dir -r requirements.txt
 
-# Prepare model directory, set ownership to worker
-RUN mkdir -p /app/model && chown -R worker:worker /app /app/model
+# Copy application code
+COPY . .
 
-USER worker
-RUN git lfs install --skip-repo
+# Create models directory
+RUN mkdir -p models
 
-ENV HOME=/home/worker \
-    WORKER_DIR=/app
+EXPOSE 8080
 
-WORKDIR ${WORKER_DIR}
-
-# Upgrade pip and build tools
-RUN python3 -m pip install --upgrade pip setuptools wheel
-
-# Install PyTorch (CUDA 11.8)
-RUN pip install torch==2.0.1 torchvision==0.15.2 torchaudio==2.0.2 \
-    --index-url https://download.pytorch.org/whl/cu118
-
-# Install DeepSpeed compatible with PyTorch 2.0+
-RUN pip install --no-cache-dir "numpy<2.0.0"
-
-# Install other Python dependencies
-COPY builder/requirements.txt requirements.txt
-RUN pip install --no-cache-dir -r requirements.txt && rm requirements.txt
-
-COPY builder/requirements_audio_enhancer.txt requirements_audio_enhancer.txt
-RUN pip install --no-cache-dir -r requirements_audio_enhancer.txt && rm requirements_audio_enhancer.txt
-
-# Clone model repositories as worker
-RUN git clone https://huggingface.co/coqui/XTTS-v2 ${WORKER_MODEL_DIR}/xttsv2
-RUN git clone https://huggingface.co/ResembleAI/resemble-enhance ${WORKER_MODEL_DIR}/audio_enhancer
-
-# Copy application source code
-COPY src/ ./
-
-ENV RUNPOD_DEBUG_LEVEL=INFO
-
-# Start the RunPod serverless handler
-CMD ["python3", "-u", "./rp_handler.py", "--model-dir=/app/model"]
+CMD ["python", "app.py"]

@@ -1,43 +1,61 @@
-# Text-To-Speech Serverless RunPod Worker
+# Voice Cloning Project
 
-## RunPod Endpoint
+This is a simple voice cloning implementation using XTTS v2.
 
-This repository contains the worker for the xTTSv2 AI Endpoints.
+## Setup
 
-## Docker Image
+1. Build the Docker image:
+   ```bash
+   docker build -t voice-cloner .
+   ```
 
+2. Run the container:
+   ```bash
+   docker run -p 8080:8080 voice-cloner
+   ```
+
+3. Test with health check:
+   ```bash
+   curl http://localhost:8080/health
+   ```
+
+## Usage
+
+### Python API Usage:
+```python
+import requests
+
+response = requests.post('http://localhost:8080/clone', json={
+    "text": "Hello, this is my cloned voice speaking!",
+    "speaker_wav": "https://example.com/my_voice_sample.wav",
+    "language": "en",
+    "speed": 1.0
+})
+
+if response.status_code == 200:
+    with open('cloned_output.wav', 'wb') as f:
+        f.write(response.content)
+```
+
+### cURL Usage:
 ```bash
-docker build .
+curl -X POST http://localhost:8080/clone \
+  -H "Content-Type: application/json" \
+  -d '{
+    "text": "Hello world, this is voice cloning!",
+    "speaker_wav": "https://example.com/reference.wav",
+    "language": "en",
+    "speed": 1.0
+  }' \
+  --output cloned_voice.wav
 ```
- or
 
- ```bash
- docker pull devbes/tts-runpod-serverless-worker:latest
- ```
-
-## Continuous Deployment
-This worker follows a modified version of the [worker template](https://github.com/runpod-workers/worker-template) where the Docker build workflow contains additional SD models to be built and pushed.
-
-## API
-
-```json
-{
-  "input": {
-      "language": <language:str>,
-      "voice": {
-          "speaker_0": "url"
-          "speaker_1": "url"
-          },
-      "text": [
-          ["speaker_0", "text"],
-          ["speaker_1", "text"],
-          ...
-          ["speaker_1", "text"],
-      ],
-      "gpt_cond_len": <gpt_cond_len:int>,
-      "max_ref_len": <max_ref_len:int>,
-      "speed": <speed:float>
-      "enhance_audio": <enhance_audio:bool>
-  }
-}
-```
+## Features
+- No DeepSpeed dependency
+- Simple Flask API
+- Automatic audio preprocessing
+- Support for URL-based reference audio
+- Multi-language support
+- Adjustable speech speed
+- Docker containerized
+- Error handling and validation
