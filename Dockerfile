@@ -36,8 +36,8 @@ RUN pip install --no-cache-dir --upgrade pip && \
 # Use non-root user
 USER worker
 
-# Make your script executable
-RUN chmod +x /app/start.sh
+# Make start script executable
+RUN chmod +x start.sh
 
-# Default command to run the script
+# Set the script as the container's startup command
 CMD ["./start.sh"]
