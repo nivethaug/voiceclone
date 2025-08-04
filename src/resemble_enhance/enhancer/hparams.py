@@ -1,8 +1,8 @@
 from dataclasses import dataclass
 from pathlib import Path
+from typing import Optional
 
 from ..hparams import HParams as HParamsBase
-
 
 @dataclass(frozen=True)
 class HParams(HParamsBase):
@@ -17,7 +17,7 @@ class HParams(HParamsBase):
 
     vocoder_extra_dim: int = 32
 
-    gan_training_start_step: int | None = 5_000
-    enhancer_stage1_run_dir: Path | None = None
+    gan_training_start_step: Optional[int] = 5_000
+    enhancer_stage1_run_dir: Optional[Path] = None
+    denoiser_run_dir: Optional[Path] = None
 
-    denoiser_run_dir: Path | None = None
