@@ -42,8 +42,7 @@ RUN pip install torch==2.0.1 torchvision==0.15.2 torchaudio==2.0.2 \
     --index-url https://download.pytorch.org/whl/cu118
 
 # Install DeepSpeed compatible with PyTorch 2.0+
-RUN pip install --no-cache-dir deepspeed==0.14.0 && \
-    pip install --no-cache-dir "numpy<2.0.0"
+RUN pip install --no-cache-dir "numpy<2.0.0"
 
 # Install other Python dependencies
 COPY builder/requirements.txt requirements.txt
