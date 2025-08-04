@@ -1,43 +1,35 @@
-# Base image with CUDA, cuDNN (optimized for RunPod + Python)
-FROM nvidia/cuda:12.1.0-cudnn8-runtime-ubuntu22.04
+# Base image (CPU-only)
+FROM python:3.10-slim
 
-# Set environment variables early for efficiency
+# Set environment variables
 ENV DEBIAN_FRONTEND=noninteractive \
-    TZ=Etc/UTC \
     PYTHONUNBUFFERED=1 \
-    PATH="/home/worker/.local/bin:$PATH" \
     WORKER_DIR=/app
 
-# Install core dependencies
+# Install system dependencies
 RUN apt-get update && \
     apt-get install -y --no-install-recommends \
-        python3 python3-pip python3-dev \
-        wget curl git git-lfs sudo \
         build-essential cmake ninja-build \
-        libaio-dev bzip2 ca-certificates gcc g++ \
-    && git lfs install \
-    && apt-get clean && rm -rf /var/lib/apt/lists/*
+        git git-lfs curl wget \
+        libaio-dev ffmpeg sox && \
+    apt-get clean && rm -rf /var/lib/apt/lists/*
 
-# Create non-root user
-RUN useradd -m -s /bin/bash -u 1000 worker && \
-    echo "worker ALL=(ALL) NOPASSWD:ALL" > /etc/sudoers.d/worker && \
-    chmod 0440 /etc/sudoers.d/worker
+# Install Git LFS
+RUN git lfs install
 
-# Set work directory
+# Create app directory
 WORKDIR ${WORKER_DIR}
-COPY --chown=worker:worker . ${WORKER_DIR}
 
-# Install Python dependencies early to cache layer
-COPY builder/requirements.txt builder/requirements_audio_enhancer.txt ./builder/
+# Copy everything
+COPY . .
+
+# Install Python dependencies
 RUN pip install --no-cache-dir --upgrade pip && \
     pip install --no-cache-dir -r builder/requirements.txt && \
     pip install --no-cache-dir -r builder/requirements_audio_enhancer.txt || true
 
-# Use non-root user
-USER worker
-
 # Make start script executable
 RUN chmod +x start.sh
 
-# Set the script as the container's startup command
+# Start the container
 CMD ["./start.sh"]
