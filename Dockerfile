@@ -1,6 +1,7 @@
 FROM python:3.11-slim
 
 WORKDIR /app
+ENV COQUI_TOS_AGREED=1
 
 # Install system dependencies
 RUN apt-get update && apt-get install -y \
