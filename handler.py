@@ -10,7 +10,6 @@ voice_cloner = VoiceCloner()
 
 async def handler(event):
     input_data = event.get("input", {})
-
     text = input_data.get('text', '')
     speaker_wav_url = input_data.get('speaker_wav', '')
     language = input_data.get('language', 'en')
@@ -19,6 +18,8 @@ async def handler(event):
     if not text or not speaker_wav_url:
         return {"error": "Missing text or speaker_wav"}
 
+    tmp_path = None
+    output_path = None
     try:
         # Download speaker_wav
         with tempfile.NamedTemporaryFile(delete=False, suffix=".wav") as tmp_file:
@@ -38,10 +39,6 @@ async def handler(event):
         with open(output_path, "rb") as f:
             audio_bytes = f.read()
 
-        # Clean up temp files
-        os.remove(tmp_path)
-        os.remove(output_path)
-
         # Encode to base64 for JSON response
         audio_b64 = base64.b64encode(audio_bytes).decode()
 
@@ -52,9 +49,12 @@ async def handler(event):
 
     except Exception as e:
         return {"error": str(e)}
+    finally:
+        # Clean up temp files if they exist
+        if tmp_path and os.path.exists(tmp_path):
+            os.remove(tmp_path)
+        if output_path and os.path.exists(output_path):
+            os.remove(output_path)
 
-if __name__ == "__main__":
-    runpod.serverless.start({
-        "handler": handler,
-        "concurrency_modifier": lambda c: 1,
-    })
+# Register the handler for Runpod serverless, no persistent process needed
+runpod.serverless.start({"handler": handler})
