@@ -28,20 +28,16 @@ WORKDIR ${WORKER_DIR}
 COPY --chown=worker:worker . ${WORKER_DIR}
 
 # Install Python dependencies early to cache layer
-COPY requirements.txt .
+COPY builder/requirements.txt builder/requirements_audio_enhancer.txt ./builder/
 RUN pip install --no-cache-dir --upgrade pip && \
-    pip install --no-cache-dir -r requirements.txt
-
-# Optional: for audio processing enhancements (can be skipped if unused)
-COPY requirements_audio_enhancer.txt .
-RUN pip install --no-cache-dir -r requirements_audio_enhancer.txt || true
+    pip install --no-cache-dir -r builder/requirements.txt && \
+    pip install --no-cache-dir -r builder/requirements_audio_enhancer.txt || true
 
 # Use non-root user
 USER worker
 
 # Make your script executable
-RUN chmod +x /app/stat.sh
+RUN chmod +x /app/start.sh
 
 # Default command to run the script
-CMD ["./stat.sh"]
-
+CMD ["./start.sh"]
