@@ -1,16 +1,17 @@
 import logging
 import re
-from functools import cache, partial
+from functools import partial
 from typing import Callable, TypeVar
 
-import deepspeed
 import pandas as pd
-from deepspeed.accelerator import get_accelerator
-from deepspeed.runtime.engine import DeepSpeedEngine
-from deepspeed.runtime.utils import clip_grad_norm_
+import torch
 from torch import nn
+from torch.nn.utils import clip_grad_norm_
+from torch import Tensor
+from torch.cuda import is_available
 
 from .distributed import fix_unset_envs
+
 
 logger = logging.getLogger(__name__)
 
@@ -52,20 +53,12 @@ def dispatch_attribute(module, attrname, value, filter_fn: Callable[[nn.Module],
             setattr(module, attrname, value)
 
 
-@cache
-def update_deepspeed_logger():
-    logger = logging.getLogger("DeepSpeed")
-    logger.setLevel(logging.WARNING)
-
-
-@cache
 def init_distributed():
-    update_deepspeed_logger()
     fix_unset_envs()
-    deepspeed.init_distributed(get_accelerator().communication_backend_name())
+    # You can add PyTorch native distributed init here if needed
 
 
-def _try_each(*fns, e=None):
+def _try_each(*fns):
     if len(fns) == 0:
         raise RuntimeError("All functions failed")
 
@@ -78,13 +71,16 @@ def _try_each(*fns, e=None):
         return _try_each(*tails)
 
 
-class Engine(DeepSpeedEngine):
-    def __init__(self, *args, ckpt_dir, **kwargs):
+class Engine(nn.Module):
+    def __init__(self, model: nn.Module, ckpt_dir, **kwargs):
+        super().__init__()
         init_distributed()
-        super().__init__(args=None, *args, **kwargs)
+        self.module = model
         self._ckpt_dir = ckpt_dir
         self._frozen_params = set()
         self._fp32_grad_norm = None
+        self.gradient_clipping = kwargs.get("gradient_clipping", 1.0)
+        self.global_steps = 0
 
     @property
     def path(self):
@@ -114,12 +110,12 @@ class Engine(DeepSpeedEngine):
     def clip_fp32_gradients(self):
         self._fp32_grad_norm = clip_grad_norm_(
             parameters=self.module.parameters(),
-            max_norm=self.gradient_clipping(),
-            mpu=self.mpu,
+            max_norm=self.gradient_clipping,
         )
 
     def get_grad_norm(self):
-        grad_norm = self.get_global_grad_norm()
+        # Replace with appropriate method for getting global grad norm as needed
+        grad_norm = None
         if grad_norm is None:
             grad_norm = self._fp32_grad_norm
         return grad_norm
@@ -127,19 +123,13 @@ class Engine(DeepSpeedEngine):
     def save_checkpoint(self, *args, **kwargs):
         if not self._ckpt_dir.exists():
             self._ckpt_dir.mkdir(parents=True, exist_ok=True)
-        super().save_checkpoint(save_dir=self._ckpt_dir, *args, **kwargs)
+        # Save model state dict, optimizer, scheduler manually here if needed
+        torch.save(self.module.state_dict(), self._ckpt_dir / "model.pt")
         logger.info(f"Saved checkpoint to {self._ckpt_dir}")
 
     def load_checkpoint(self, *args, **kwargs):
-        fn = partial(super().load_checkpoint, *args, load_dir=self._ckpt_dir, **kwargs)
-        return _try_each(
-            lambda: fn(),
-            lambda: fn(load_optimizer_states=False),
-            lambda: fn(load_lr_scheduler_states=False),
-            lambda: fn(load_optimizer_states=False, load_lr_scheduler_states=False),
-            lambda: fn(
-                load_optimizer_states=False,
-                load_lr_scheduler_states=False,
-                load_module_strict=False,
-            ),
-        )
+        fn = partial(torch.load, self._ckpt_dir / "model.pt")
+        # Implement a try load pattern or just load state_dict directly
+        state_dict = fn()
+        self.module.load_state_dict(state_dict)
+

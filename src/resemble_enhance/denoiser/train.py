@@ -5,7 +5,6 @@ from pathlib import Path
 
 import soundfile
 import torch
-from deepspeed import DeepSpeedConfig
 from torch import Tensor
 from tqdm import tqdm
 
@@ -21,7 +20,8 @@ def load_G(run_dir: Path, hp: HParams | None = None, training=True):
         hp = HParams.load(run_dir)
     assert isinstance(hp, HParams)
     model = Denoiser(hp)
-    engine = Engine(model=model, config_class=DeepSpeedConfig(hp.deepspeed_config), ckpt_dir=run_dir / "ds" / "G")
+    # Removed DeepSpeedConfig usage
+    engine = Engine(model=model, ckpt_dir=run_dir / "ds" / "G")
     if training:
         engine.load_checkpoint()
     else:

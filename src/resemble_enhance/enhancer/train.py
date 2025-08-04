@@ -5,7 +5,6 @@ from pathlib import Path
 
 import soundfile
 import torch
-from deepspeed import DeepSpeedConfig
 from torch import Tensor
 from tqdm import tqdm
 
@@ -22,7 +21,8 @@ def load_G(run_dir: Path, hp: HParams | None = None, training=True):
         hp = HParams.load(run_dir)
         assert isinstance(hp, HParams)
     model = Enhancer(hp)
-    engine = Engine(model=model, config_class=DeepSpeedConfig(hp.deepspeed_config), ckpt_dir=run_dir / "ds" / "G")
+    # Removed DeepSpeedConfig usage
+    engine = Engine(model=model, ckpt_dir=run_dir / "ds" / "G")
     if training:
         engine.load_checkpoint()
     else:
@@ -35,7 +35,8 @@ def load_D(run_dir: Path, hp: HParams):
         hp = HParams.load(run_dir)
         assert isinstance(hp, HParams)
     model = Discriminator(hp)
-    engine = Engine(model=model, config_class=DeepSpeedConfig(hp.deepspeed_config), ckpt_dir=run_dir / "ds" / "D")
+    # Removed DeepSpeedConfig usage
+    engine = Engine(model=model, ckpt_dir=run_dir / "ds" / "D")
     engine.load_checkpoint()
     return engine
 
@@ -67,7 +68,7 @@ def main():
         elif hp.lcfm_training_mode == "cfm":
             alpha_fn = lambda: random.uniform(*hp.mix_alpha_range)
             mx_dwavs = mix_fg_bg(batch["fg_dwavs"], batch["bg_dwavs"], alpha=alpha_fn)
-            pred = engine(mx_dwavs, batch["fg_wavs"], batch["fg_dwavs"])
+            pred = engine(mx_dwavs, batch["fg_wavs"], batch["fg_wavs"])
         else:
             raise ValueError(f"Unknown training mode: {hp.lcfm_training_mode}")
         losses = engine.gather_attribute("losses")

@@ -3,9 +3,7 @@ import socket
 from functools import cache, partial, wraps
 from typing import Callable
 
-import deepspeed
 import torch
-from deepspeed.accelerator import get_accelerator
 from torch.distributed import broadcast_object_list
 
 
@@ -31,7 +29,9 @@ def fix_unset_envs():
 @cache
 def init_distributed():
     fix_unset_envs()
-    deepspeed.init_distributed(get_accelerator().communication_backend_name())
+    # If needed, initialize PyTorch distributed process group here:
+    # import torch.distributed as dist
+    # dist.init_process_group(backend="nccl")
     torch.cuda.set_device(local_rank())
 
 
