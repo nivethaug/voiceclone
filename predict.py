@@ -1,5 +1,6 @@
 import os
 import tempfile
+import traceback
 import requests
 import torch
 from TTS.api import TTS
@@ -80,7 +81,8 @@ class VoiceCloner:
             return output_path
 
         except Exception as e:
-            raise Exception(f"Voice synthesis failed: {str(e)}")
+            error_msg = f"Voice synthesis failed: {str(e)}\n{traceback.format_exc()}"
+            return {"error": error_msg}
 
 
 # Usage example
