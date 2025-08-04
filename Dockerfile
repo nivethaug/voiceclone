@@ -39,5 +39,9 @@ RUN pip install --no-cache-dir -r requirements_audio_enhancer.txt || true
 # Use non-root user
 USER worker
 
-CMD ["bash", "start.sh"]
+# Make your script executable
+RUN chmod +x /app/stat.sh
+
+# Default command to run the script
+CMD ["./stat.sh"]
 
