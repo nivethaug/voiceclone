@@ -9,3 +9,4 @@ librosa==0.10.0.post2
 pydub==0.25.1
 requests==2.31.0
 runpod
+gpt4all
