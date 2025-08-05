@@ -10,3 +10,4 @@ requests==2.31.0
 runpod
 gpt4all
 f5-tts
+vocos
