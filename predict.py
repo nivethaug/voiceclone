@@ -10,7 +10,13 @@ import traceback
 class VoiceCloner:
     def __init__(self):
         self.device = "cuda" if torch.cuda.is_available() else "cpu"
-        self.model = AutoModel.from_pretrained("ai4bharat/IndicF5", trust_remote_code=True).to(self.device)
+        # Pass HF_TOKEN environment variable as token parameter to access gated model
+        hf_token = os.getenv("HF_TOKEN", None)
+        self.model = AutoModel.from_pretrained(
+            "ai4bharat/IndicF5",
+            trust_remote_code=True,
+            token=hf_token
+        ).to(self.device)
 
     def save_base64_audio(self, base64_str):
         try:

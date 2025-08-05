@@ -22,7 +22,7 @@ def chat_with_gpt(prompt):
 
 async def handler(event):
     input_data = event.get("input", {})
-    action = input_data.get("action", "clone")  # default to voice clone
+    action = input_data.get("action", "clone")
 
     if action == "chat":
         prompt = input_data.get("prompt", "")
@@ -35,7 +35,7 @@ async def handler(event):
         text = input_data.get('text', '')
         speaker_wav_input = input_data.get('speaker_wav', '')
         ref_text = input_data.get('ref_text', '')
-        language = input_data.get('language', 'ta')  # default to Tamil
+        language = input_data.get('language', 'ta')
         speed = input_data.get('speed', 1.0)
 
         if not text or not speaker_wav_input or not ref_text:
