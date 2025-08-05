@@ -9,3 +9,4 @@ pydub==0.25.1
 requests==2.31.0
 runpod
 gpt4all
+f5-tts
