@@ -5,10 +5,8 @@ import tempfile
 import os
 import base64
 from predict import VoiceCloner
-from gpt4all import GPT4All  # import GPT4All here
 
 voice_cloner = VoiceCloner()
-gpt_model = GPT4All("mistral-7b-instruct-v0.1.Q4_0.gguf")  # Adjust path if needed
 
 def is_base64(sb):
     try:
@@ -20,8 +18,8 @@ def is_base64(sb):
         return False
 
 def chat_with_gpt(prompt):
-    with gpt_model.chat_session() as session:
-        return session.prompt(prompt)
+    
+        return "test"
 
 async def handler(event):
     input_data = event.get("input", {})

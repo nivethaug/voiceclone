@@ -31,7 +31,6 @@ COPY . .
 RUN mkdir -p models
 
 # Clean old model cache (to avoid corrupt model errors)
-RUN rm -rf /root/.local/share/tts/tts_models/multilingual/multi-dataset/xtts_v2
 
 EXPOSE 8080
 
