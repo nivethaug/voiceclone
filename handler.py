@@ -20,6 +20,7 @@ async def handler(event):
 
     tmp_path = None
     output_path = None
+
     try:
         # Download speaker_wav
         with tempfile.NamedTemporaryFile(delete=False, suffix=".wav") as tmp_file:
@@ -34,6 +35,10 @@ async def handler(event):
             language=language,
             speed=speed
         )
+
+        # Handle errors from synthesize
+        if isinstance(output_path, dict) and "error" in output_path:
+            return output_path
 
         # Read audio bytes
         with open(output_path, "rb") as f:
@@ -50,11 +55,11 @@ async def handler(event):
     except Exception as e:
         return {"error": str(e)}
     finally:
-        # Clean up temp files if they exist
-        if tmp_path and os.path.exists(tmp_path):
+        # Clean up temp files if they exist and are paths
+        if tmp_path and isinstance(tmp_path, str) and os.path.exists(tmp_path):
             os.remove(tmp_path)
-        if output_path and os.path.exists(output_path):
+        if output_path and isinstance(output_path, str) and os.path.exists(output_path):
             os.remove(output_path)
 
-# Register the handler for Runpod serverless, no persistent process needed
+# Register the handler for Runpod serverless
 runpod.serverless.start({"handler": handler})
