@@ -7,8 +7,10 @@ from TTS.api import TTS
 import soundfile as sf
 import librosa
 import numpy as np
+import base64
 
 class VoiceCloner:
+
     def __init__(self):
         # Initialize XTTS v2 model with GPU support if available
         self.device = "cuda" if torch.cuda.is_available() else "cpu"
@@ -27,6 +29,18 @@ class VoiceCloner:
         temp_file.write(response.content)
         temp_file.close()
         return temp_file.name
+
+    def save_base64_audio(self, base64_str):
+        """Decode base64 string and save as wav file"""
+        try:
+            audio_bytes = base64.b64decode(base64_str)
+            temp_file = tempfile.NamedTemporaryFile(delete=False, suffix='.wav')
+            temp_file.write(audio_bytes)
+            temp_file.close()
+            return temp_file.name
+        except Exception as e:
+            error_msg = f"Base64 decoding failed: {str(e)}\n{traceback.format_exc()}"
+            return {"error": error_msg}
 
     def preprocess_audio(self, audio_path, target_sr=22050, max_duration=30):
         try:
@@ -48,23 +62,34 @@ class VoiceCloner:
             return {"error": error_msg}
 
     def synthesize(self, text, speaker_wav, language="en", speed=1.0):
-        """Generate cloned voice audio"""
+        """
+        speaker_wav can be: 
+        - a local file path (string)
+        - a URL (string starting with http or https)
+        - a base64 string (automatically detected)
+        """
         processed_speaker_wav = None
         try:
-            # Download reference audio if URL provided
-            if speaker_wav.startswith(('http://', 'https://')):
-                speaker_wav = self.download_audio(speaker_wav)
+            # Detect type and fetch input as local file
+            if isinstance(speaker_wav, str):
+                if speaker_wav.startswith(('http://', 'https://')):
+                    speaker_wav = self.download_audio(speaker_wav)
+                elif self.is_base64(speaker_wav):
+                    tmp = self.save_base64_audio(speaker_wav)
+                    if isinstance(tmp, dict) and "error" in tmp:
+                        return tmp
+                    speaker_wav = tmp
+                # Otherwise, assume it's a local file path (as before)
+            else:
+                return {"error": "Unsupported speaker_wav input type."}
 
-            # Preprocess reference audio
             processed_result = self.preprocess_audio(speaker_wav)
             if isinstance(processed_result, dict) and "error" in processed_result:
                 return processed_result
             processed_speaker_wav = processed_result
 
-            # Generate output path
             output_path = tempfile.NamedTemporaryFile(delete=False, suffix='.wav').name
 
-            # Synthesize speech using TTS model
             self.tts.tts_to_file(
                 text=text,
                 speaker_wav=processed_speaker_wav,
@@ -83,9 +108,16 @@ class VoiceCloner:
                 if processed_speaker_wav and speaker_wav != processed_speaker_wav and os.path.exists(processed_speaker_wav):
                     os.unlink(processed_speaker_wav)
                 if speaker_wav and speaker_wav.startswith('/tmp') and os.path.exists(speaker_wav):
-                    # Only delete if we created the download (not user local file)
                     os.unlink(speaker_wav)
             except Exception:
                 pass
 
+    def is_base64(self, s):
+        try:
+            if isinstance(s, str):
+                base64.b64decode(s, validate=True)
+                return True
+            return False
+        except Exception:
+            return False
 
