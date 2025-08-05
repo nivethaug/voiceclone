@@ -22,7 +22,7 @@ def chat_with_gpt(prompt):
 
 async def handler(event):
     input_data = event.get("input", {})
-    action = input_data.get("action", "clone")  # default to voice clone if not specified
+    action = input_data.get("action", "clone")  # default to voice clone
 
     if action == "chat":
         prompt = input_data.get("prompt", "")
@@ -34,43 +34,36 @@ async def handler(event):
     elif action == "clone":
         text = input_data.get('text', '')
         speaker_wav_input = input_data.get('speaker_wav', '')
-        language = input_data.get('language', 'ta')  # default to Tamil, change if needed
+        ref_text = input_data.get('ref_text', '')
+        language = input_data.get('language', 'ta')  # default to Tamil
         speed = input_data.get('speed', 1.0)
-        speaker_id = input_data.get('speaker_id', 17)  # default female Tamil speaker
-        style_id = input_data.get('style_id', 0)      # default style
 
-        if not text:
-            return {"error": "Missing text for synthesis"}
+        if not text or not speaker_wav_input or not ref_text:
+            return {"error": "Missing required fields: text, speaker_wav, or ref_text"}
 
         tmp_path = None
         output_path = None
 
         try:
-            # Determine if speaker_wav_input is URL or base64 audio (optional in this model)
-            if speaker_wav_input:
-                if speaker_wav_input.startswith(('http://', 'https://')):
-                    with tempfile.NamedTemporaryFile(delete=False, suffix=".wav") as tmp_file:
-                        r = requests.get(speaker_wav_input)
-                        tmp_file.write(r.content)
-                        tmp_path = tmp_file.name
-                elif is_base64(speaker_wav_input):
-                    audio_bytes = base64.b64decode(speaker_wav_input)
-                    with tempfile.NamedTemporaryFile(delete=False, suffix=".wav") as tmp_file:
-                        tmp_file.write(audio_bytes)
-                        tmp_path = tmp_file.name
-                else:
-                    return {"error": "speaker_wav must be a valid URL or base64 audio string"}
+            if speaker_wav_input.startswith(('http://', 'https://')):
+                with tempfile.NamedTemporaryFile(delete=False, suffix=".wav") as tmp_file:
+                    r = requests.get(speaker_wav_input)
+                    tmp_file.write(r.content)
+                    tmp_path = tmp_file.name
+            elif is_base64(speaker_wav_input):
+                audio_bytes = base64.b64decode(speaker_wav_input)
+                with tempfile.NamedTemporaryFile(delete=False, suffix=".wav") as tmp_file:
+                    tmp_file.write(audio_bytes)
+                    tmp_path = tmp_file.name
             else:
-                tmp_path = None  # No speaker wav needed by default
+                return {"error": "speaker_wav must be a valid URL or base64 audio string"}
 
-            # Generate voice output
             output_path = voice_cloner.synthesize(
                 text=text,
                 speaker_wav=tmp_path,
+                ref_text=ref_text,
                 language=language,
-                speed=speed,
-                speaker_id=speaker_id,
-                style_id=style_id
+                speed=speed
             )
 
             if isinstance(output_path, dict) and "error" in output_path:
@@ -87,7 +80,6 @@ async def handler(event):
 
         except Exception as e:
             return {"error": str(e)}
-
         finally:
             if tmp_path and os.path.exists(tmp_path):
                 os.remove(tmp_path)
