@@ -1,6 +1,6 @@
 torch==2.1.0
 torchaudio==2.1.0
-TTS>=0.22.0,<0.23.0
+coqui-tts>=0.25.0,<0.26.0
 transformers==4.35.2
 flask==2.3.3
 numpy
