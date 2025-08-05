@@ -31,25 +31,30 @@ class VoiceCloner:
         return temp_file.name
 
     def preprocess_audio(self, audio_path, target_sr=22050, max_duration=30):
-        """Preprocess reference audio"""
-        # Load audio
-        audio, sr = librosa.load(audio_path, sr=target_sr)
+        try:
+            """Preprocess reference audio"""
+            # Load audio
+            audio, sr = librosa.load(audio_path, sr=target_sr)
 
-        # Trim silence
-        audio, _ = librosa.effects.trim(audio, top_db=20)
+            # Trim silence
+            audio, _ = librosa.effects.trim(audio, top_db=20)
 
-        # Limit duration
-        if len(audio) > max_duration * target_sr:
-            audio = audio[:max_duration * target_sr]
+            # Limit duration
+            if len(audio) > max_duration * target_sr:
+                audio = audio[:max_duration * target_sr]
 
-        # Normalize
-        audio = audio / np.max(np.abs(audio))
+            # Normalize
+            audio = audio / np.max(np.abs(audio))
 
-        # Save processed audio
-        processed_path = tempfile.NamedTemporaryFile(delete=False, suffix='.wav').name
-        sf.write(processed_path, audio, target_sr)
+            # Save processed audio
+            processed_path = tempfile.NamedTemporaryFile(delete=False, suffix='.wav').name
+            sf.write(processed_path, audio, target_sr)
 
-        return processed_path
+            return processed_path
+        except Exception as e:
+            error_msg = f"Preprocess synthesis failed: {str(e)}\n{traceback.format_exc()}{audio_path}"
+            return {"error": error_msg}
+
 
     def synthesize(self, text, speaker_wav, language="en", speed=1.0):
         """Generate cloned voice audio"""
