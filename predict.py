@@ -1,3 +1,4 @@
+
 import torch
 import soundfile as sf
 from transformers import AutoModel
@@ -9,14 +10,15 @@ import traceback
 
 class VoiceCloner:
     def __init__(self):
-        self.device = "cuda" if torch.cuda.is_available() else "cpu"
-        # Pass HF_TOKEN environment variable as token parameter to access gated model
+        # Do NOT move IndicF5 model to device manually!
         hf_token = os.getenv("HF_TOKEN", None)
+
+        # Load model safely
         self.model = AutoModel.from_pretrained(
             "ai4bharat/IndicF5",
             trust_remote_code=True,
             token=hf_token
-        ).to(self.device)
+        )
 
     def save_base64_audio(self, base64_str):
         try:
@@ -26,15 +28,12 @@ class VoiceCloner:
             temp_file.close()
             return temp_file.name
         except Exception as e:
-            error_msg = f"Base64 decoding failed: {str(e)}\n{traceback.format_exc()}"
-            return {"error": error_msg}
+            return {"error": f"Base64 decoding failed: {str(e)}\n{traceback.format_exc()}"}
 
     def is_base64(self, s):
         try:
-            if isinstance(s, str):
-                base64.b64decode(s, validate=True)
-                return True
-            return False
+            base64.b64decode(s, validate=True)
+            return True
         except Exception:
             return False
 
@@ -43,20 +42,21 @@ class VoiceCloner:
             return {"error": "speaker_wav and ref_text are required for IndicF5 synthesis"}
 
         try:
+            # Run inference (model handles device and processing internally)
             output_audio = self.model(
-                text,
+                text=text,
                 ref_audio_path=speaker_wav,
                 ref_text=ref_text
             )
 
+            # Normalize if needed
             if output_audio.dtype == np.int16:
                 output_audio = output_audio.astype(np.float32) / 32768.0
 
             output_path = tempfile.NamedTemporaryFile(delete=False, suffix=".wav").name
-            sf.write(output_path, np.array(output_audio, dtype=np.float32), samplerate=24000)
+            sf.write(output_path, output_audio, samplerate=24000)
 
             return output_path
 
         except Exception as e:
-            error_msg = f"Voice synthesis failed: {str(e)}\n{traceback.format_exc()}"
-            return {"error": error_msg}
+            return {"error": f"Voice synthesis failed: {str(e)}\n{traceback.format_exc()}"}
