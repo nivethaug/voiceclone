@@ -1,11 +1,11 @@
 torch==2.1.0
 torchaudio==2.1.0
 coqui-tts>=0.25.0,<0.26.0
-transformers==4.35.2
+transformers>=4.43.0,<=4.46.2
 flask==2.3.3
 numpy
 soundfile==0.12.1
-librosa>=0.10.1  # <-- Updated from 0.10.0.post2 to >=0.10.1
+librosa>=0.10.1
 pydub==0.25.1
 requests==2.31.0
 runpod
