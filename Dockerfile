@@ -19,7 +19,9 @@ COPY requirements.txt .
 RUN python3 -m pip install --upgrade pip setuptools wheel
 
 # Install IndicF5 repo directly to fix ckpt_path error
-RUN pip install --no-cache-dir git+https://github.com/ai4bharat/IndicF5.git
+RUN pip uninstall IndicF5
+RUN pip install git+https://github.com/ai4bharat/IndicF5.git
+
 
 # (Optional) If you still need coqui-tts for other models, keep this, else you can remove:
 # RUN pip uninstall tts -y && pip install "coqui-tts>=0.25.0,<0.26.0"
