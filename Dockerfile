@@ -17,6 +17,8 @@ COPY requirements.txt .
 
 # Upgrade pip, setuptools, wheel and install Python dependencies
 RUN python3 -m pip install --upgrade pip setuptools wheel
+# Install git and other system dependencies
+RUN apt-get update && apt-get install -y git && rm -rf /var/lib/apt/lists/*
 
 # Install IndicF5 repo directly to fix ckpt_path error
 RUN pip uninstall IndicF5
