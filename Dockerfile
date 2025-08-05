@@ -19,7 +19,7 @@ COPY requirements.txt .
 RUN python3 -m pip install --upgrade pip setuptools wheel
 RUN pip uninstall tts -y && pip install "coqui-tts>=0.25.0,<0.26.0"
 #tts version printing
-RUN python3 -c "import tts; print('TTS version:', tts.__version__)"
+RUN python3 -c "from TTS import __version__ as tts_version; print('TTS version:', tts_version)"
 
 
 RUN pip install --no-cache-dir -r requirements.txt
